@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stock Track</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+</head>
+<body>
+  <div id="app" v-cloak>
+    <header class="topbar">
+      <h1>Stock Track</h1>
+      <nav>
+        <a v-for="t in tabs" :key="t.id" :href="'#' + t.id" :class="{ active: tab === t.id }">{{ t.label }}</a>
+      </nav>
+      <span v-for="ix in indices" :key="ix.instrument_id" class="ticker" :title="'Prev close ' + money(ix.prev_close) + ' · as of ' + new Date(ix.as_of).toLocaleTimeString() + ' · refreshes every 2s'">
+        <span class="ticker-name">{{ ix.name }}</span> <strong>{{ money(ix.ltp) }}</strong> <span v-if="ix.change !== null" :class="pnlClass(ix.change)">{{ ix.change > 0 ? '▲' : ix.change < 0 ? '▼' : '' }}{{ money(Math.abs(ix.change)) }} ({{ pct(ix.change_pct) }})</span>
+      </span>
+      <span v-if="!indices.length" class="ticker muted" :title="indicesError || 'Loading…'">NIFTY 50 —</span>
+      <button class="health-pill" :class="health.state" :title="healthTitle" @click="checkHealth({ manual: true })">
+        {{ health.state === 'ok' ? 'Service OK' : health.state === 'checking' ? 'Checking…' : 'Service down' }}
+      </button>
+    </header>
+
+    <main>
+      <!-- Global error banner: any failed API call lands here. -->
+      <div v-if="error" class="alert error">
+        <strong>{{ error.title }}</strong>
+        <span>{{ error.message }}</span>
+        <button class="link" @click="error = null">Dismiss</button>
+      </div>
+      <div v-if="notice" class="alert success">
+        <span>{{ notice }}</span>
+        <button class="link" @click="notice = null">Dismiss</button>
+      </div>
+
+      <!-- WATCHLISTS -->
+      <section v-if="tab === 'watchlists'">
+        <div class="card">
+          <h2>Add to watchlist</h2>
+
+          <!-- Target watchlist: one chip per list (+ stock count), then "+ New watchlist". -->
+          <div class="chip-row" role="radiogroup" aria-label="Watchlist to add to">
+            <span class="chip-label">Add to</span>
+            <button v-for="w in watchlists" :key="w.id" class="chip" :class="{ active: wlChoice === w.name }"
+                    role="radio" :aria-checked="wlChoice === w.name" @click="wlChoice = w.name">
+              {{ w.name }}<span class="chip-count">{{ w.items.length }}</span>
+            </button>
+            <span v-if="creatingWl" class="chip-create">
+              <input v-model="wlNewName" @keyup.enter="createWatchlist" @keyup.esc="cancelCreateWatchlist" placeholder="New watchlist name" aria-label="New watchlist name" />
+              <button @click="createWatchlist" :disabled="!wlNewName.trim() || busy">Create</button>
+              <button class="link" @click="cancelCreateWatchlist">Cancel</button>
+            </span>
+            <button v-else class="chip chip-new" @click="creatingWl = true">+ New watchlist</button>
+          </div>
+          <p v-if="!watchlists.length && !creatingWl" class="muted small">No watchlists yet — create one to start adding stocks.</p>
+
+          <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><line x1="12.6" y1="12.6" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <input v-model.trim="wlSearch.q" :placeholder="wlChoice ? 'Search a stock to add to ' + wlChoice + ' — e.g. NTPC' : 'Search a stock — e.g. NTPC'" autocomplete="off" aria-label="Search stock" />
+          </div>
+          <p v-if="wlSearch.q && wlSearch.q.length < minSearchChars" class="muted small">Type at least {{ minSearchChars }} characters…</p>
+          <p v-else-if="wlSearch.loading" class="muted small">Searching…</p>
+          <table v-if="wlSearch.results.length" class="results">
+            <tr v-for="r in wlSearch.results" :key="r.instrument_id">
+              <td><strong>{{ r.symbol }}</strong></td>
+              <td>{{ r.name }}</td>
+              <td class="muted mono">{{ r.instrument_id }}</td>
+              <td>
+                <span v-if="inSelectedWatchlist(r.instrument_id)" class="muted small">✓ In {{ wlChoice }}</span>
+                <button v-else @click="addToWatchlist(r.instrument_id)" :disabled="!wlChoice || busy" :title="wlChoice ? 'Add to ' + wlChoice : 'Create a watchlist first'">+ Add</button>
+              </td>
+            </tr>
+          </table>
+          <p v-else-if="wlSearch.searched && !wlSearch.loading" class="muted">No matches for “{{ wlSearch.q }}”.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Watchlists</h2>
+            <div class="nowrap head-actions">
+              <button class="secondary refresh-btn" @click="loadWatchlists" :disabled="loading.watchlists">Refresh</button>
+              <div class="muted small refresh-note">Auto-refresh every 2s<template v-if="updatedAt.watchlists"> · updated {{ updatedAt.watchlists.toLocaleTimeString() }}</template></div>
+            </div>
+          </div>
+          <p v-if="loading.watchlists && !watchlists.length" class="muted">Loading…</p>
+          <p v-else-if="!watchlists.length" class="muted">No watchlists yet.</p>
+          <!-- Only the watchlist selected in the "Add to" chips above is shown. -->
+          <div v-for="w in shownWatchlists" :key="w.id" class="watchlist">
+            <div class="card-head">
+              <template v-if="renaming === w.name">
+                <input v-model.trim="renameTo" @keyup.enter="renameWatchlist(w.name)" />
+                <div>
+                  <button @click="renameWatchlist(w.name)" :disabled="!renameTo || busy">Save</button>
+                  <button class="secondary" @click="renaming = null">Cancel</button>
+                </div>
+              </template>
+              <template v-else>
+                <h3>{{ w.name }} <span class="muted">({{ w.items.length }})</span></h3>
+                <button class="secondary" @click="renaming = w.name; renameTo = w.name">Rename</button>
+              </template>
+            </div>
+            <div v-if="w.items.length" class="table-wrap">
+              <table class="watchlist-table">
+                <thead>
+                  <tr><th>Stock</th><th class="num">LTP</th><th class="num">Day</th><th>Added</th><th></th></tr>
+                </thead>
+                <tbody>
+                  <template v-for="i in w.items" :key="i.instrument_id">
+                    <tr :class="{ open: wlExpanded[wlKey(w, i)] }">
+                      <td>
+                        <strong>{{ i.symbol || i.instrument_id }}</strong>
+                        <div class="muted small">{{ i.name }}</div>
+                      </td>
+                      <td class="num" :title="i.ltp_at ? 'As of ' + fmtDate(i.ltp_at) : 'No price from market-data yet'">{{ money(i.ltp) }}</td>
+                      <td class="num" :class="pnlClass(i.day_change_pct)" :title="i.prev_close ? 'Prev close ' + money(i.prev_close) : ''">{{ pct(i.day_change_pct) }}</td>
+                      <td class="muted">{{ fmtDate(i.added_at) }}</td>
+                      <td class="nowrap">
+                        <button class="secondary" @click="wlExpanded[wlKey(w, i)] = !wlExpanded[wlKey(w, i)]">{{ wlExpanded[wlKey(w, i)] ? 'Hide details' : 'Show details' }}</button>
+                        <button class="danger" @click="removeFromWatchlist(w.name, i.instrument_id)" :disabled="busy">Remove</button>
+                      </td>
+                    </tr>
+                    <tr v-if="wlExpanded[wlKey(w, i)]" class="detail-row">
+                      <td colspan="5">
+                        <div class="detail">
+                          <div class="panel wide">
+                            <h4>Fundamentals</h4>
+                            <fundamentals-panel :data="i.fundamentals"></fundamentals-panel>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <p v-else class="muted">Empty — add stocks with the search above.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- PORTFOLIO -->
+      <section v-if="tab === 'portfolio'">
+        <div class="card">
+          <h2>Add to portfolio</h2>
+          <div class="row">
+            <label class="grow">Search stock
+              <input v-model.trim="pfSearch.q" placeholder="Type a symbol or name, e.g. NTPC" autocomplete="off" />
+            </label>
+          </div>
+          <p v-if="pfSearch.q && pfSearch.q.length < minSearchChars" class="muted small">Type at least {{ minSearchChars }} characters…</p>
+          <p v-else-if="pfSearch.loading" class="muted small">Searching…</p>
+          <table v-if="pfSearch.results.length" class="results">
+            <tr v-for="r in pfSearch.results" :key="r.instrument_id" :class="{ selected: pfNew.instrument && pfNew.instrument.instrument_id === r.instrument_id }">
+              <td><strong>{{ r.symbol }}</strong></td>
+              <td>{{ r.name }}</td>
+              <td class="muted mono">{{ r.instrument_id }}</td>
+              <td><button @click="selectForPortfolio(r)" :disabled="busy">Select</button></td>
+            </tr>
+          </table>
+          <p v-else-if="pfSearch.searched && !pfSearch.loading" class="muted">No matches for “{{ pfSearch.q }}”.</p>
+
+          <div v-if="pfNew.instrument" class="subcard">
+            <h3>New position: {{ pfNew.instrument.symbol }} <span class="muted">{{ pfNew.instrument.name }}</span></h3>
+            <table class="compact tranche-form">
+              <thead><tr><th></th><th>Buy date</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Amount</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="(t, idx) in pfNew.tranches" :key="idx">
+                  <td><strong>T{{ idx + 1 }}</strong></td>
+                  <td><input type="date" v-model="t.buy_date" :max="today" /></td>
+                  <td class="num"><input type="number" min="1" step="1" v-model.number="t.quantity" placeholder="Qty" /></td>
+                  <td class="num"><input type="number" min="0" step="0.01" v-model.number="t.price" placeholder="Price" /></td>
+                  <td class="num">{{ t.quantity > 0 && t.price > 0 ? money(t.quantity * t.price) : '' }}</td>
+                  <td><button v-if="idx > 0" class="danger" @click="pfNew.tranches.splice(idx, 1)" title="Remove this tranche">✕</button></td>
+                </tr>
+                <tr class="total-row">
+                  <td></td><td>Total</td>
+                  <td class="num">{{ pfNewTotals.qty || '' }}</td>
+                  <td class="num" title="Average cost">{{ pfNewTotals.avg ? money(pfNewTotals.avg) : '' }}</td>
+                  <td class="num">{{ pfNewTotals.amount ? money(pfNewTotals.amount) : '' }}</td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+            <button class="secondary add-tranche" @click="addNewTranche">+ Add tranche (T{{ pfNew.tranches.length + 1 }})</button>
+            <label>Why I bought it (optional)
+              <textarea rows="2" v-model="pfNew.notes"></textarea>
+            </label>
+            <div class="row actions">
+              <button @click="addToPortfolio" :disabled="busy || !pfNewValid">Add to portfolio</button>
+              <button class="secondary" @click="pfNew.instrument = null">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="summary" v-if="portfolio.length">
+          <div class="stat"><span>{{ money(totals.invested) }}</span>Invested (open)</div>
+          <div class="stat"><span>{{ money(totals.value) }}</span>Current value (open)</div>
+          <div class="stat"><span :class="pnlClass(totals.unrealized)">{{ money(totals.unrealized) }}</span>Unrealized P&amp;L</div>
+          <div class="stat"><span :class="pnlClass(totals.realized)">{{ money(totals.realized) }}</span>Realized P&amp;L</div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Portfolio</h2>
+            <div class="nowrap head-actions">
+              <span class="segmented">
+                <button :class="{ secondary: pfView !== 'open' }" @click="pfView = 'open'">Active ({{ openCount }})</button>
+                <button :class="{ secondary: pfView !== 'sold' }" @click="pfView = 'sold'">Old holdings ({{ portfolio.length - openCount }})</button>
+              </span>
+              <button class="secondary refresh-btn" @click="loadPortfolio" :disabled="loading.portfolio">Refresh</button>
+              <div class="muted small refresh-note">Auto-refresh every {{ pfView === 'open' ? 2 : 10 }}s<template v-if="updatedAt.portfolio"> · updated {{ updatedAt.portfolio.toLocaleTimeString() }}</template></div>
+            </div>
+          </div>
+          <p v-if="loading.portfolio && !portfolio.length" class="muted">Loading…</p>
+          <p v-else-if="!portfolio.length" class="muted">Portfolio is empty.</p>
+          <p v-else-if="!pfRows.length" class="muted">{{ pfView === 'open' ? 'No active holdings.' : 'No sold holdings yet.' }}</p>
+          <div v-else class="table-wrap">
+            <table class="portfolio">
+              <thead>
+                <tr>
+                  <th>Stock</th><th class="num">Total qty</th><th class="num">Avg price</th><th class="num">Amount</th><th class="num">LTP</th>
+                  <th class="num">P&amp;L</th><th class="num">P&amp;L %</th><th class="num">Holding</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="i in pfRows" :key="i.instrument_id">
+                  <tr :class="{ sold: i.status === 'sold', open: expanded[i.instrument_id], 'ready-to-sell': readyToSell(i), 'profit-exit': i.status === 'open' && i.profit_exit }">
+                    <td>
+                      <strong>{{ i.symbol || i.instrument_id }}</strong>
+                      <span v-if="i.status === 'sold'" class="badge">Sold</span>
+                      <span v-if="readyToSell(i)" class="badge sell" :title="'Unrealized loss of ' + money(sellAlertLoss) + ' or more'">Ready to sell</span>
+                      <span v-if="i.status === 'open' && i.profit_exit" class="badge buy" :title="'LTP fell to the trailing SL (peak close − ' + i.trailing_sl_pct + '%), which is above avg cost'">Exit — book profit</span>
+                      <div class="muted small">{{ i.name }}</div>
+                    </td>
+                    <td class="num">{{ i.quantity || '—' }}</td>
+                    <td class="num">{{ money(i.avg_cost) }}</td>
+                    <td class="num">{{ money(i.invested, 0) }}</td>
+                    <td class="num" :title="i.ltp_at ? 'As of ' + fmtDate(i.ltp_at) : 'No price from market-data yet'">{{ money(i.ltp) }}</td>
+                    <td class="num">
+                      <span :class="pnlClass(pnlOf(i))">{{ money(pnlOf(i), 0) }}</span>
+                      <div class="muted small" v-if="pnlOf(i) !== null">{{ i.status === 'sold' ? 'Realized' : 'Unrealized' }}</div>
+                    </td>
+                    <td class="num" :class="pnlClass(i.pnl_pct)">{{ pct(i.pnl_pct) }}</td>
+                    <td class="num" :title="i.status === 'sold' ? 'T1 to sell date' : 'T1 to today'">{{ holdingWeeks(i) }}</td>
+                    <td class="nowrap">
+                      <button class="secondary" @click="toggle(i.instrument_id)">{{ expanded[i.instrument_id] ? 'Hide details' : 'Show details' }}</button>
+                    </td>
+                  </tr>
+                  <tr v-if="expanded[i.instrument_id]" class="detail-row">
+                    <td colspan="9">
+                      <portfolio-detail :item="i" :busy="busy" :today="today" @save="savePortfolio" @remove="removeFromPortfolio(i)"></portfolio-detail>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

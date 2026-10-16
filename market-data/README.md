@@ -66,6 +66,19 @@ Then:
 docker exec -it stocktrack-redis redis-cli HGET INSTRUMENT_PRICES "NSE_EQ|INE733E01010"
 ```
 
+## Logging
+
+Logs go to stdout (visible via `docker compose logs -f market-data`) and are
+also appended to `logs/market-data.log` at the repo root — one file, reused
+across restarts, mounted into the container via docker-compose. Startup,
+Redis/Upstox connection, instrument refreshes, and sweep summaries are logged
+at INFO.
+
+The sweep polls Upstox every `POLL_INTERVAL_SECONDS` (60s by default), so
+per-batch/per-quote detail (requests sent, instrument ids, quote counts) is
+only logged at DEBUG. Set `VERBOSE=true` in `.env` to see that detail when
+debugging.
+
 ## Config reference
 See `.env.example` for every setting (poll interval, batch size, pacing,
 instrument refresh hour).

@@ -32,11 +32,14 @@ def run_sweep(provider: MarketDataProvider, store: Store, settings: Settings) ->
 
     total = 0
     started = time.time()
+    log.debug("Sweep starting: %d subscribed instruments, batch size %d", len(subscriptions), settings.quote_batch_size)
     for offset, batch in _chunks(subscriptions, settings.quote_batch_size):
+        log.debug("Batch at offset %d: requesting %d instruments: %s", offset, len(batch), batch)
         try:
             quotes = provider.get_ltp_quotes(batch)
             store.save_prices(quotes)
             total += len(quotes)
+            log.debug("Batch at offset %d: received %d quotes", offset, len(quotes))
         except Exception:  # noqa: BLE001 - keep the sweep resilient
             log.exception("Batch at offset %d failed; skipping", offset)
         time.sleep(settings.batch_pause_seconds)

@@ -21,6 +21,10 @@ services:
     environment:
       # Override the Redis host so the service reaches the container, not localhost.
       REDIS_URL: redis://redis:6379/0
+      LOG_DIR: /app/logs
+    volumes:
+      # Bind mount (not a named volume) so logs land directly in ./logs on the host.
+      - ./logs:/app/logs
     depends_on:
       redis:
         condition: service_healthy
@@ -52,6 +56,7 @@ services:
       # Override host/port so the service reaches the containers, not localhost.
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-portfolio}
       REDIS_URL: redis://redis:6379/0
+      LOG_DIR: /app/logs
     ports:
       - "8001:8000"
     volumes:
@@ -59,11 +64,26 @@ services:
       # but are still reachable on the host via `docker run --rm -v
       # stock-track_portfolio-backups:/backups ...` or `docker cp`.
       - portfolio-backups:/backups
+      # Bind mount (not a named volume) so logs land directly in ./logs on the host.
+      - ./logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  front-end:
+    image: nginx:1.27-alpine
+    container_name: stocktrack-front-end
+    ports:
+      - "8080:80"
+    volumes:
+      # Bind mounts so edits to the static files show up on browser refresh.
+      - ./front-end/public:/usr/share/nginx/html:ro
+      - ./front-end/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - portfolio
     restart: unless-stopped
 
 volumes:

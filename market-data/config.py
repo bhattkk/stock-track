@@ -19,5 +19,9 @@ class Settings(BaseSettings):
     # Upstox — year-long, read-only Analytics Token (no OAuth flow needed)
     upstox_access_token: str = ""
 
+    # Debug logging — the sweep polls every `poll_interval_seconds`, so
+    # per-batch/per-quote detail is only logged (at DEBUG) when this is on.
+    verbose: bool = False
+
 
 settings = Settings()

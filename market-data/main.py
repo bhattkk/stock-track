@@ -22,17 +22,15 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from config import settings
 from ingest import run_sweep
 from instruments import refresh_instruments
+from logging_config import setup_logging
 from providers import build_provider
 from store import Store
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-)
 log = logging.getLogger("market-data")
 
 
 def main() -> None:
+    setup_logging(verbose=settings.verbose)
     log.info("Starting market-data service")
 
     store = Store(settings.redis_url)

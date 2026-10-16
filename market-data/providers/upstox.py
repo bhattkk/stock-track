@@ -58,12 +58,15 @@ class UpstoxProvider(MarketDataProvider):
             }
         )
         self._session = session
+        log.info("Upstox session established")
 
     # -- instruments --------------------------------------------------------
     def get_instruments(self) -> list[Instrument]:
+        log.debug("Fetching instrument master from %s", BOD_URL)
         resp = requests.get(BOD_URL, timeout=60)
         resp.raise_for_status()
         rows = json.loads(gzip.decompress(resp.content))
+        log.debug("Instrument master download: %d raw rows", len(rows))
 
         out: list[Instrument] = []
         for row in rows:
@@ -86,6 +89,7 @@ class UpstoxProvider(MarketDataProvider):
     def get_ltp_quotes(self, instrument_ids: list[str]) -> dict[str, Quote]:
         if not self._session:
             raise RuntimeError("UpstoxProvider.authenticate() must run first")
+        log.debug("Requesting LTP quotes for %d instruments: %s", len(instrument_ids), instrument_ids)
         resp = self._session.get(
             LTP_URL,
             params={"instrument_key": ",".join(instrument_ids)},
@@ -93,6 +97,7 @@ class UpstoxProvider(MarketDataProvider):
         )
         resp.raise_for_status()
         payload = resp.json()
+        log.debug("Upstox LTP response: status=%s rows=%d", payload.get("status"), len(payload.get("data", {})))
         if payload.get("status") != "success":
             raise RuntimeError(f"Upstox LTP error: {payload}")
 
