@@ -73,6 +73,31 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # On-demand fundamentals screener: not started by a plain `docker compose up`.
+  #   docker compose --profile screener up -d screener    # start
+  #   docker compose stop screener                        # stop when done
+  # Its data lives in Postgres (screener_* tables) and the raw-XBRL cache
+  # volume, so nothing is lost while it's stopped.
+  screener:
+    build: ./screener
+    container_name: stocktrack-screener
+    profiles: ["screener"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-portfolio}
+      LOG_DIR: /app/logs
+      RAW_DIR: /data/raw
+    ports:
+      - "8002:8000"
+    volumes:
+      - screener-raw:/data/raw
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   front-end:
     image: nginx:1.27-alpine
     container_name: stocktrack-front-end
@@ -90,3 +115,4 @@ volumes:
   redis-data:
   postgres-data:
   portfolio-backups:
+  screener-raw:

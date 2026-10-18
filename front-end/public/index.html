@@ -23,7 +23,7 @@
       </button>
     </header>
 
-    <main>
+    <main :class="{ wide: tab === 'screener' }">
       <!-- Global error banner: any failed API call lands here. -->
       <div v-if="error" class="alert error">
         <strong>{{ error.title }}</strong>
@@ -259,9 +259,16 @@
           </div>
         </div>
       </section>
+
+      <!-- SCREENER (on-demand service; see screener.js) -->
+      <section v-if="tab === 'screener'">
+        <screener-tab :watchlists="watchlists" :busy="busy" @error="showError" @notice="showNotice" @add-to-watchlist="addToNamedWatchlist"></screener-tab>
+      </section>
     </main>
   </div>
 
+  <script src="api.js"></script>
+  <script src="screener.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

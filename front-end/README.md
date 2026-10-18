@@ -1,7 +1,11 @@
 # Front End
 
-A minimal Vue 3 UI for the [portfolio](../portfolio) service. No build step:
-Vue is loaded from a CDN and the app is three static files in `public/`.
+A minimal Vue 3 UI for the [portfolio](../portfolio) and
+[screener](../screener) services. No build step: Vue is loaded from a CDN
+and the app is a handful of static files in `public/`:
+- `api.js`: shared fetch helper
+- `app.js`: the app plus the Portfolio and Watchlists tabs
+- `screener.js`: the Screener tab
 
 ## Run
 
@@ -10,8 +14,10 @@ docker compose up -d front-end     # also starts portfolio, postgres, redis
 open http://localhost:8080
 ```
 
-nginx serves `public/` and proxies `/api/*` to `portfolio:8000`, so the
-browser only talks to one origin and the backend needs no CORS config.
+nginx serves `public/`, proxies `/api/screener/*` to `screener:8000` and
+other `/api/*` calls to `portfolio:8000`. The browser only talks to one
+origin, so the backends need no CORS config. The screener runs on demand.
+While it's stopped, the Screener tab shows the command that starts it.
 `public/` is bind-mounted — edit a file and refresh the browser.
 
 ## Pages
@@ -26,6 +32,7 @@ service is down at startup, data loads automatically once it's back.
 | Page | What it does |
 |---|---|
 | **Watchlists** (`#watchlists`) | Search stocks as you type, pick the target list from the "Add to" chips (each shows its stock count; results already in it show "✓ In …" instead of Add), create an empty list with the **+ New watchlist** chip; the list below shows only the watchlist selected in the chips, remove items, rename watchlists. Each stock shows LTP and day change vs previous close; **Show details** opens the same Fundamentals panel as the portfolio. Auto-refreshes every 2 s (`WATCHLIST_REFRESH_MS`). |
+| **Screener** (`#screener`) | **Data** card: coverage (stocks with results / listed), price date, last refresh and **Refresh data** (with live progress). **Screen** card: saved-screen picker (Save / Save as… / Delete) and "all of" conditions (indicator, operator, value, with each indicator's definition below it). The indicator list and the **Columns** chooser come from the screener's `GET /indicators`. **Results**: sortable columns, **Details** (yearly and quarterly statements plus every indicator; hover a value for its inputs) and **+ Watchlist** into the watchlist picked in "Add to". Doesn't auto-refresh. |
 | **Portfolio** (`#portfolio`) | Search as you type, Select a stock, enter T1 (buy date, qty, price) and use **+ Add tranche** for T2, T3, … (no limit), plus optional notes; the form shows running totals. The list shows **Active** holdings by default and **Old holdings** (sold) via a toggle, each sorted by P&L descending, with total qty, avg price, amount, LTP, realized/unrealized P&L, P&L % and holding period in weeks (T1 to today, or to the sell date), plus portfolio totals. **Show details** opens the entries & exits log (every tranche, totals and the exit) with the max hold date for active holdings (T1 + 9 months, with days left / overdue), add/edit/delete tranche, an Exit panel to mark an active holding as sold (sold holdings edit or undo the exit from its row in the log instead), the "why I bought it" notes, fundamentals (sector, key ratios vs sector, 4 quarters of shareholding with the latest change, and a collapsible company profile — from Upstox, refreshed daily) and Remove from portfolio. |
 
 The portfolio list auto-refreshes every **2 s** on Active and **10 s** on

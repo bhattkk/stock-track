@@ -1,62 +1,6 @@
 // Stock Track front end — a single Vue 3 app (CDN build, no bundler).
-// All calls go to `/api/*`, which nginx proxies to the portfolio service.
+// API calls go through api() in api.js; the Screener tab lives in screener.js.
 const { createApp } = Vue;
-
-const API_BASE = "/api";
-
-class ApiError extends Error {
-  constructor(title, message) {
-    super(message);
-    this.title = title;
-  }
-}
-
-// FastAPI errors are {detail: "..."} or, for validation, {detail: [{msg, loc}, ...]}.
-function describeDetail(body) {
-  if (!body || body.detail === undefined) return null;
-  if (typeof body.detail === "string") return body.detail;
-  if (Array.isArray(body.detail)) {
-    return body.detail.map((d) => `${(d.loc || []).slice(1).join(".") || "request"}: ${d.msg}`).join("; ");
-  }
-  return JSON.stringify(body.detail);
-}
-
-async function api(method, path, body) {
-  const label = `${method} ${path}`;
-  let res;
-  try {
-    res = await fetch(API_BASE + path, {
-      method,
-      headers: body ? { "Content-Type": "application/json" } : {},
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch (e) {
-    throw new ApiError(`${label} failed`, `Could not reach the server (${e.message}).`);
-  }
-
-  if (res.status === 204) return null;
-
-  const text = await res.text();
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    // Non-JSON (e.g. nginx's HTML 502 page when the portfolio container is down).
-  }
-
-  if (!res.ok) {
-    let message = describeDetail(data);
-    if (!message) {
-      message = [502, 503, 504].includes(res.status)
-        ? "Portfolio service is unreachable. Is the `portfolio` container running?"
-        : res.statusText || "Unexpected error";
-    }
-    throw new ApiError(`${label} failed (HTTP ${res.status})`, message);
-  }
-  return data;
-}
-
-const enc = encodeURIComponent;
 
 // Search-as-you-type: wait for MIN_SEARCH_CHARS, debounce keystrokes, show
 // at most SEARCH_LIMIT results. `seq` discards responses that arrive after
@@ -74,6 +18,8 @@ const SELL_ALERT_LOSS = 40000;
 // themselves change once per market-data sweep, POLL_INTERVAL_SECONDS.)
 const PORTFOLIO_REFRESH_MS = { open: 2000, sold: 10000 };
 const WATCHLIST_REFRESH_MS = 2000;
+// Tabs whose list auto-refreshes (each named after its API path).
+const LIST_TABS = ["portfolio", "watchlists"];
 
 // Header index ticker (NIFTY 50) refresh; the API fetches it live from Upstox.
 const INDEX_REFRESH_MS = 2000;
@@ -400,6 +346,7 @@ createApp({
       tabs: [
         { id: "portfolio", label: "Portfolio" },
         { id: "watchlists", label: "Watchlists" },
+        { id: "screener", label: "Screener" },
       ],
       tab: "portfolio",
       healthTimer: null,
@@ -627,6 +574,7 @@ createApp({
     // its own interval on the next tick.
     scheduleRefresh() {
       clearTimeout(this.refreshTimer);
+      if (!LIST_TABS.includes(this.tab)) return; // the Screener tab doesn't auto-refresh
       const ms = this.tab === "portfolio" ? PORTFOLIO_REFRESH_MS[this.pfView] : WATCHLIST_REFRESH_MS;
       this.refreshTimer = setTimeout(async () => {
         await this.pollList();
@@ -701,6 +649,15 @@ createApp({
       } finally {
         if (seq === s.seq) s.loading = false;
       }
+    },
+
+    // From the Screener tab, which picks its own target watchlist.
+    addToNamedWatchlist(name, instrumentId) {
+      return this.run(async () => {
+        await api("POST", `/watchlists/${enc(name)}/items`, { instrument_id: instrumentId });
+        await this.loadWatchlists();
+        this.showNotice(`Added ${instrumentId} to watchlist "${name}".`);
+      });
     },
 
     addToWatchlist(instrumentId) {
@@ -838,4 +795,5 @@ createApp({
 })
   .component("portfolio-detail", PortfolioDetail)
   .component("fundamentals-panel", FundamentalsPanel)
+  .component("screener-tab", ScreenerTab)
   .mount("#app");

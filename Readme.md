@@ -12,9 +12,10 @@ Analytics token.
 |---|---|---|
 | [`market-data`](market-data/README.md) | Keeps the NSE equity instrument master in Redis (daily) and polls LTP quotes for every subscribed instrument (every `POLL_INTERVAL_SECONDS`, default 60 s). | Python, APScheduler |
 | [`portfolio`](portfolio/README.md) | REST API for the portfolio (tranches, exits, P&L, trailing stop-loss), watchlists, stock search, fundamentals and the NIFTY 50 quote. Decides which instruments market-data polls. Backs up Postgres on a timer. | Python, FastAPI, SQLAlchemy |
-| [`front-end`](front-end/README.md) | Single-page UI: Portfolio and Watchlists tabs, NIFTY 50 ticker and service-health pill. Served by nginx, which proxies `/api/*` to the portfolio service. | Vue 3 (CDN, no build step), nginx |
+| [`screener`](screener/README.md) | **On demand** (compose profile `screener`). Screens every NSE stock on fundamentals computed from XBRL results filings: OPM trend, ROE/ROCE, debt, capex funding, CFO/PAT, growth, valuation. Refreshes only when triggered. | Python, FastAPI, SQLAlchemy |
+| [`front-end`](front-end/README.md) | Single-page UI: Portfolio, Watchlists and Screener tabs, NIFTY 50 ticker and service-health pill. Served by nginx, which proxies `/api/screener/*` to the screener and other `/api/*` calls to the portfolio service. | Vue 3 (CDN, no build step), nginx |
 | `redis` | Shared state between services: instrument master, subscriptions, latest prices. | Redis 7 |
-| `postgres` | Source of truth for portfolio, tranches, watchlists and cached fundamentals. | Postgres 16 |
+| `postgres` | Source of truth for portfolio, tranches, watchlists and cached fundamentals; also holds the screener's `screener_*` tables. | Postgres 16 |
 
 ## Architecture
 
@@ -83,6 +84,13 @@ are in `portfolio/routers/portfolio.py`; the ₹40k alert is in
   - Chips pick and create lists. Search as you type to add stocks.
   - Rows show LTP, day change and fundamentals.
   - Auto-refresh every 2 s.
+- **Screener** (needs the screener service running):
+  - Build a screen from any indicator; save, rename and delete screens.
+  - Pick columns and sort the results.
+  - **Details** shows 6 years and 8 quarters of statements plus every
+    indicator. Hover a value for the numbers behind it.
+  - **+ Watchlist** adds a result to a watchlist.
+  - **Refresh data** pulls new filings from NSE.
 - **Header:** NIFTY 50 ticker refreshed every 2 s, and a health pill that
   re-checks every 30 s.
 - **Fundamentals** (Upstox Company Fundamentals API, cached daily):
@@ -103,6 +111,7 @@ open http://localhost:8080
 |---|---|
 | 8080 | front-end (the app) |
 | 8001 | portfolio API (`/docs` for Swagger) |
+| 8002 | screener API, only while it's running (`docker compose --profile screener up -d screener`) |
 | 5432 | Postgres |
 | 6379 | Redis |
 
@@ -114,11 +123,13 @@ Configuration lives in `.env` (see `.env.example`). Main settings:
 | market-data | `POLL_INTERVAL_SECONDS`, `QUOTE_BATCH_SIZE`, `BATCH_PAUSE_SECONDS`, `INSTRUMENT_REFRESH_HOUR`, `VERBOSE` |
 | Postgres | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` |
 | portfolio | `SEARCH_RESULT_LIMIT`, `BACKUP_INTERVAL_MINUTES`, `BACKUP_RETENTION` |
+| screener | `NSE_REQUEST_DELAY`, `HISTORY_YEARS`, `HISTORY_QUARTERS`, `SERIES` |
 
 ## Operations
 
 - **Logs:**
-  - `logs/market-data.log` and `logs/portfolio.log` at the repo root.
+  - `logs/market-data.log`, `logs/portfolio.log` and `logs/screener.log` at
+    the repo root.
   - Also on stdout: `docker compose logs -f <service>`.
   - The portfolio service logs every API request, including the front end's
     auto-refresh polling.
@@ -134,6 +145,8 @@ Configuration lives in `.env` (see `.env.example`). Main settings:
   - Fundamentals: at startup (skipped if already fetched today) and daily
     at 06:00.
   - Backups: every 10 minutes.
+  - The screener has none; refresh it from its tab or CLI (see
+    [`screener/README.md`](screener/README.md)).
 
 ## LLM Integration
 

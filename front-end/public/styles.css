@@ -255,6 +255,40 @@ button.refresh-btn { font-size: 12px; padding: 4px 10px; }
 .fund-about summary { cursor: pointer; color: var(--accent); }
 .fund-about p { margin: 8px 0 0; line-height: 1.5; }
 
+/* -- screener ------------------------------------------------------------ */
+main.wide { max-width: 1280px; }
+select {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--text);
+}
+.screen-actions { display: flex; gap: 6px; align-items: center; }
+.condition { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.condition input[type="number"] { width: 110px; }
+.condition .remove-cond { color: var(--bad); margin-left: 4px; }
+.cond-help { flex-basis: 100%; }
+.column-picker { margin-left: auto; }
+.column-picker summary { cursor: pointer; color: var(--accent); }
+.column-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-top: 8px; }
+label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); font-size: 13px; }
+label.check input { min-width: 0; }
+label.inline-label { flex-direction: row; align-items: center; gap: 6px; }
+table.screener-table td, table.screener-table th { white-space: nowrap; vertical-align: top; }
+table.screener-table th.sortable { cursor: pointer; user-select: none; }
+table.screener-table th.sortable:hover { color: var(--accent); }
+table.screener-table tr.open > td { border-bottom-color: transparent; }
+table.screener-table > tbody > tr.detail-row > td { background: var(--bg); padding: 12px; white-space: normal; text-align: left; }
+table.screener-table > tbody > tr:not(.detail-row) > td:last-child button { border-color: transparent; background: none; padding: 4px 6px; }
+table.screener-table > tbody > tr:not(.detail-row) > td:last-child button:hover:not(:disabled) { text-decoration: underline; }
+/* The details panel stays within the visible width while the wide results
+   table scrolls sideways; its own tables scroll inside it. */
+table.screener-table .detail { position: sticky; left: 12px; width: min(1192px, calc(100vw - 96px)); }
+.indicator-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px 20px; }
+.indicator-grid table.compact td { white-space: nowrap; }
+
 @media (max-width: 640px) {
   .detail { grid-template-columns: 1fr; }
   .fund-grid { grid-template-columns: 1fr; }
@@ -265,4 +299,6 @@ button.refresh-btn { font-size: 12px; padding: 4px 10px; }
   .row { flex-direction: column; align-items: stretch; }
   input { min-width: 0; }
   .mono { display: none; }
+  .column-picker { margin-left: 0; }
+  .screen-actions { flex-wrap: wrap; }
 }
