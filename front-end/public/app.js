@@ -1,5 +1,6 @@
 // Stock Track front end — a single Vue 3 app (CDN build, no bundler).
-// API calls go through api() in api.js; the Screener tab lives in screener.js.
+// API calls go through api() in api.js; the Screener tab lives in screener.js
+// and the Analysis tab in analysis.js.
 const { createApp } = Vue;
 
 // Search-as-you-type: wait for MIN_SEARCH_CHARS, debounce keystrokes, show
@@ -347,6 +348,7 @@ createApp({
         { id: "portfolio", label: "Portfolio" },
         { id: "watchlists", label: "Watchlists" },
         { id: "screener", label: "Screener" },
+        { id: "analysis", label: "Analysis" },
       ],
       tab: "portfolio",
       healthTimer: null,
@@ -796,4 +798,5 @@ createApp({
   .component("portfolio-detail", PortfolioDetail)
   .component("fundamentals-panel", FundamentalsPanel)
   .component("screener-tab", ScreenerTab)
+  .component("analysis-tab", AnalysisTab)
   .mount("#app");

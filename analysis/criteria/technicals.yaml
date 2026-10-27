@@ -1,0 +1,252 @@
+# Stage 1: technical filter on daily and weekly charts.
+#
+# This file IS the configuration. Edit thresholds here; the next run (weekly,
+# or "Run now" in the Analysis tab) uses them. Each run stores a hash of this
+# file, so results always trace back to the rules that produced them.
+#
+# A stock PASSES when:
+#   A. every tradability gate passes, and
+#   B. every trend gate passes, and
+#   C. at least `setups.min_fired` entry setups fire, and
+#   D. no flag with `action: reject` fires (`warn` flags only lower the score).
+#
+# Gates compare a metric (see README "Metrics") with a number: `metric op value`.
+# Setups and flags are detectors written in technicals/setups.py; their
+# thresholds are the `params` below. Set `enabled: false` to switch a rule off.
+#
+# Every rule has a `why`: what it checks and why it matters. The Analysis tab
+# shows it next to the result.
+
+version: 1
+
+# -- A. Tradability: can this stock be traded sensibly at all? ----------------
+tradability:
+  - id: history
+    title: Enough price history
+    metric: daily_bars
+    op: ">="
+    value: 220
+    why: >-
+      The 200-day average, 52-week range and 6-month relative strength need
+      about a year of data. Recent listings without it can't be judged on
+      trend, so they are left out rather than guessed.
+
+  - id: min_price
+    title: Price at least ₹50
+    metric: close
+    op: ">="
+    value: 50
+    why: >-
+      Very low-priced stocks are prone to operator activity, circuit limits
+      and wide spreads, and their percentage moves are noisy. ₹50 removes most penny stocks.
+
+  - id: liquidity
+    title: Median daily turnover at least ₹5 Cr
+    metric: median_traded_value_cr_20d
+    op: ">="
+    value: 5
+    why: >-
+      You need to enter in tranches and exit all at once without moving the
+      price. A median of ₹5 Cr a day (over 20 sessions; the median ignores
+      one-off block deals) means a position of a few lakh is a tiny fraction
+      of daily volume.
+
+# -- B. Trend: is the stock already in an uptrend? ------------------------------
+# The strategy pyramids into winners and trails an 11% stop, which works only
+# when you're riding an existing uptrend. These gates make sure one exists.
+trend:
+  - id: w_above_30w
+    title: Weekly close above the 30-week average
+    metric: w_close_vs_sma30_pct
+    op: ">"
+    value: 0
+    why: >-
+      Stan Weinstein's "Stage 2" test. Above a rising 30-week average,
+      buyers have been in control for about seven months, which is roughly
+      your 9-month holding horizon. Below it, a stock is basing or declining.
+
+  - id: w_30w_rising
+    title: 30-week average rising (vs 4 weeks ago)
+    metric: w_sma30_slope_4w_pct
+    op: ">"
+    value: 0
+    why: >-
+      Price above a flat or falling average is often just a bounce inside a
+      downtrend. A rising average means the trend itself is up.
+
+  - id: d_above_50
+    title: Daily close above the 50-day average
+    metric: d_close_vs_sma50_pct
+    op: ">"
+    value: 0
+    why: >-
+      The 50-day average is the intermediate trend that most funds watch. Below
+      it, the current swing has turned down, so wait for it to be reclaimed.
+
+  - id: d_50_above_200
+    title: 50-day average above the 200-day average
+    metric: d_sma50_vs_sma200_pct
+    op: ">"
+    value: 0
+    why: >-
+      The medium-term trend is above the long-term trend (after a "golden
+      cross"). With price > 50 > 200, every timeframe points the same way.
+
+  - id: d_200_rising
+    title: 200-day average rising (vs 20 sessions ago)
+    metric: d_sma200_slope_20d_pct
+    op: ">"
+    value: 0
+    why: >-
+      The long-term trend must be rising, not just flat. A falling 200-day
+      average marks a long-term downtrend, where rallies usually fade.
+
+  - id: near_high
+    title: Within 25% of the 52-week high
+    metric: pct_below_52w_high
+    op: "<="
+    value: 25
+    why: >-
+      Leaders trade near their highs. A stock more than 25% below its high
+      has heavy overhead supply from holders waiting to break even, which
+      caps rallies.
+
+  - id: off_low
+    title: At least 30% above the 52-week low
+    metric: pct_above_52w_low
+    op: ">="
+    value: 30
+    why: >-
+      Shows that a real advance has already taken place. Stocks barely off
+      their lows haven't proven demand yet, and "cheap" stocks often get cheaper.
+
+  - id: rs_vs_nifty
+    title: Beating the NIFTY 50 over 6 months
+    metric: rs_6m_vs_benchmark_pct
+    op: ">"
+    value: 0
+    why: >-
+      Relative strength: the stock's 6-month return minus the NIFTY 50's.
+      Stocks that outperform the market tend to keep outperforming
+      (momentum), and in a falling market they are the ones being accumulated.
+
+# -- C. Entry setups: is something happening now? -------------------------------
+# A stock in an uptrend is a candidate; a setup makes it actionable this week.
+setups:
+  min_fired: 1
+  rules:
+    - id: breakout
+      title: Weekly breakout above resistance on volume
+      params:
+        within_weeks: 2          # the breakout week can be this week or last week
+        volume_multiple: 1.5     # breakout week volume vs the 10-week average
+        volume_avg_weeks: 10
+        fallback_high_weeks: 26  # if no swing level is overhead, use the 26-week closing high
+      why: >-
+        Resistance is where sellers kept appearing. A weekly close above it on
+        at least 1.5× normal volume means that supply has been absorbed, and
+        such breakouts often start the next leg up. Volume separates real
+        breakouts from false ones.
+
+    - id: accumulation
+      title: Up week on very heavy volume
+      params:
+        volume_multiple: 2.0     # last week's volume vs the 10-week average
+        volume_avg_weeks: 10
+        min_close_position: 0.5  # closed in the upper half of the week's range
+      why: >-
+        Institutions can't hide their size. An up week on at least 2× normal
+        volume that closes near its high suggests large buyers are building
+        positions, often before price breaks out.
+
+    - id: tight_base
+      title: Tight base just below resistance
+      params:
+        weeks: 3                       # look at the last 3 weekly closes...
+        max_range_pct: 8               # ...all within 8% of each other
+        atr_lookback: 60               # volatility compared with the last 60 sessions
+        max_atr_percentile: 20         # in the quietest 20% of that period
+        max_pct_below_resistance: 5    # and within 5% of the next resistance
+      why: >-
+        A volatility contraction near highs. When an uptrending stock moves
+        less and less just under resistance, sellers are drying up. These
+        bases give clean breakouts and a close, well-defined stop under the base.
+
+    - id: pullback_support
+      title: Daily pullback to support with a bullish reversal
+      params:
+        ma_days: 50
+        tolerance_pct: 2               # low within 2% of the 50-day average or a support level
+        within_days: 3                 # reversal candle in the last 3 sessions
+        reversal_patterns: [hammer, bullish_engulfing, piercing, morning_star]
+        volume_short_days: 5           # pullback volume (5 days before the reversal)...
+        volume_long_days: 20           # ...must be below the 20-day average
+      why: >-
+        Buying a dip to support inside an uptrend is the classic low-risk entry,
+        because the stop goes just under support. Light volume on the dip means
+        holders aren't rushing out, and the reversal candle shows buyers stepping back in.
+
+    - id: weekly_reversal
+      title: Weekly bullish reversal at support
+      params:
+        reversal_patterns: [bullish_engulfing, hammer, morning_star]
+        tolerance_pct: 3               # weekly low within 3% of the 30-week average or support
+      why: >-
+        The same idea as the daily pullback, on the weekly chart. A whole week
+        of buyers defending the 30-week average or a support level carries more
+        weight than a single day.
+
+# -- D. Red flags -------------------------------------------------------------
+# `warn` lowers the score and shows a warning; `reject` fails the stock.
+flags:
+  - id: overextended
+    title: Overextended above the 50-day average
+    action: warn
+    params:
+      max_pct_above_sma50: 25
+      max_rsi: 80
+    why: >-
+      More than 25% above the 50-day average, or daily RSI above 80, means the
+      move is stretched. Pullbacks are likely, and an 11% trailing stop could
+      trigger on a normal shakeout.
+
+  - id: distribution
+    title: Distribution weeks
+    action: warn
+    params:
+      weeks: 8
+      min_count: 3
+      volume_avg_weeks: 10
+    why: >-
+      Three or more down weeks on above-average volume within 8 weeks means
+      large holders are selling into strength. Clusters of these often come
+      before a trend breaks.
+
+  - id: bearish_at_resistance
+    title: Weekly bearish reversal at resistance
+    action: warn
+    params:
+      reversal_patterns: [bearish_engulfing, shooting_star, evening_star]
+      tolerance_pct: 3
+    why: >-
+      Sellers defended the ceiling on the weekly chart (bearish engulfing,
+      shooting star or evening star at a resistance level). Upside looks
+      capped until that level is cleared.
+
+  - id: gap_down
+    title: Unfilled gap down
+    action: warn
+    params:
+      min_gap_pct: 5
+      within_days: 10
+    why: >-
+      A gap down of 5% or more in the last 10 sessions that price hasn't
+      climbed back into usually reflects bad news the market is still pricing in.
+
+# -- Ranking (only orders the stocks that pass; never filters) -----------------
+score:
+  setup_points: 2              # per setup fired
+  rs_percentile_divisor: 25    # RS percentile 0–100 / 25 → 0–4 points
+  weekly_rsi_band: [50, 75]    # healthy, not stretched, weekly momentum...
+  weekly_rsi_points: 1         # ...earns 1 point
+  warn_penalty: 1              # per warn flag

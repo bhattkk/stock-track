@@ -13,7 +13,8 @@ Analytics token.
 | [`market-data`](market-data/README.md) | Keeps the NSE equity instrument master in Redis (daily) and polls LTP quotes for every subscribed instrument (every `POLL_INTERVAL_SECONDS`, default 60 s). | Python, APScheduler |
 | [`portfolio`](portfolio/README.md) | REST API for the portfolio (tranches, exits, P&L, trailing stop-loss), watchlists, stock search, fundamentals and the NIFTY 50 quote. Decides which instruments market-data polls. Backs up Postgres on a timer. | Python, FastAPI, SQLAlchemy |
 | [`screener`](screener/README.md) | **On demand** (compose profile `screener`). Screens every NSE stock on fundamentals computed from XBRL results filings: OPM trend, ROE/ROCE, debt, capex funding, CFO/PAT, growth, valuation. Refreshes only when triggered. | Python, FastAPI, SQLAlchemy |
-| [`front-end`](front-end/README.md) | Single-page UI: Portfolio, Watchlists and Screener tabs, NIFTY 50 ticker and service-health pill. Served by nginx, which proxies `/api/screener/*` to the screener and other `/api/*` calls to the portfolio service. | Vue 3 (CDN, no build step), nginx |
+| [`analysis`](analysis/README.md) | **Stage 1 technical filter**, run weekly (Sat 07:00 IST) or on demand. Filters every NSE stock on daily and weekly charts: tradability, uptrend (30-week / 50 / 200-day averages, 52-week range, RS vs NIFTY), entry setups (breakout, accumulation, tight base, pullback, weekly reversal) and red flags. Rules live in `analysis/criteria/technicals.yaml`. | Python, FastAPI, APScheduler |
+| [`front-end`](front-end/README.md) | Single-page UI: Portfolio, Watchlists, Screener and Analysis tabs, NIFTY 50 ticker and service-health pill. Served by nginx, which proxies `/api/screener/*` to the screener, `/api/analysis/*` to analysis and other `/api/*` calls to the portfolio service. | Vue 3 (CDN, no build step), nginx |
 | `redis` | Shared state between services: instrument master, subscriptions, latest prices. | Redis 7 |
 | `postgres` | Source of truth for portfolio, tranches, watchlists and cached fundamentals; also holds the screener's `screener_*` tables. | Postgres 16 |
 
@@ -34,6 +35,12 @@ front-end (nginx) ── /api/* ──▶ portfolio (FastAPI :8001)
                                   ▼
                                 Redis ◀── market-data ── Upstox: instrument master,
                                                          LTP quotes for subscriptions
+
+front-end (nginx) ── /api/analysis/* ──▶ analysis (FastAPI :8003, weekly scheduler)
+                                           ├── Redis: reads INSTRUMENTS (the universe)
+                                           ├── Upstox: daily candles (all NSE equities + NIFTY 50)
+                                           └── Postgres: analysis_candles, analysis_runs,
+                                                         analysis_results
 ```
 
 - Every instrument is identified by Upstox's ISIN-based key, e.g.

@@ -98,6 +98,30 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # Stage-1 technical filter: weekly scheduled run (Sat 07:00 IST) + API for
+  # the Analysis tab. Reads INSTRUMENTS from Redis, stores analysis_* tables.
+  analysis:
+    build: ./analysis
+    container_name: stocktrack-analysis
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-portfolio}
+      REDIS_URL: redis://redis:6379/0
+      LOG_DIR: /app/logs
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./logs:/app/logs
+      # Bind mount the rules so editing technicals.yaml needs no rebuild.
+      - ./analysis/criteria:/app/criteria
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   front-end:
     image: nginx:1.27-alpine
     container_name: stocktrack-front-end

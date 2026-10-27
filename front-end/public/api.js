@@ -1,10 +1,14 @@
 // Shared API helper for the Stock Track front end (loaded before app.js and
-// screener.js). Every call goes to `/api/*`: nginx proxies `/api/screener/*`
-// to the screener service and the rest to the portfolio service.
+// screener.js / analysis.js). Every call goes to `/api/*`: nginx proxies
+// `/api/screener/*` to the screener service, `/api/analysis/*` to the analysis
+// service and the rest to the portfolio service.
 
 // The screener runs on demand, so "unreachable" usually just means it's stopped.
 const SCREENER_DOWN_MESSAGE =
   "Screener service isn't running. Start it with: docker compose --profile screener up -d screener";
+
+const ANALYSIS_DOWN_MESSAGE =
+  "Analysis service is unreachable. Start it with: docker compose up -d analysis";
 
 const API_BASE = "/api";
 
@@ -54,7 +58,9 @@ async function api(method, path, body) {
       message = [502, 503, 504].includes(res.status)
         ? path.startsWith("/screener/")
           ? SCREENER_DOWN_MESSAGE
-          : "Portfolio service is unreachable. Is the `portfolio` container running?"
+          : path.startsWith("/analysis/")
+            ? ANALYSIS_DOWN_MESSAGE
+            : "Portfolio service is unreachable. Is the `portfolio` container running?"
         : res.statusText || "Unexpected error";
     }
     throw new ApiError(`${label} failed (HTTP ${res.status})`, message);

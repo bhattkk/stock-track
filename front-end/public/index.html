@@ -23,7 +23,7 @@
       </button>
     </header>
 
-    <main :class="{ wide: tab === 'screener' }">
+    <main :class="{ wide: tab === 'screener' || tab === 'analysis' }">
       <!-- Global error banner: any failed API call lands here. -->
       <div v-if="error" class="alert error">
         <strong>{{ error.title }}</strong>
@@ -264,11 +264,17 @@
       <section v-if="tab === 'screener'">
         <screener-tab :watchlists="watchlists" :busy="busy" @error="showError" @notice="showNotice" @add-to-watchlist="addToNamedWatchlist"></screener-tab>
       </section>
+
+      <!-- ANALYSIS (stage 1 technical filter; see analysis.js) -->
+      <section v-if="tab === 'analysis'">
+        <analysis-tab :watchlists="watchlists" :busy="busy" @error="showError" @notice="showNotice" @add-to-watchlist="addToNamedWatchlist"></analysis-tab>
+      </section>
     </main>
   </div>
 
   <script src="api.js"></script>
   <script src="screener.js"></script>
+  <script src="analysis.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

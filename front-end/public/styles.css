@@ -302,3 +302,21 @@ table.screener-table .detail { position: sticky; left: 12px; width: min(1192px, 
   .column-picker { margin-left: 0; }
   .screen-actions { flex-wrap: wrap; }
 }
+
+/* -- Analysis tab --------------------------------------------------------- */
+.progress { height: 6px; background: var(--border); border-radius: 999px; overflow: hidden; margin: 6px 0 10px; }
+.progress-bar { height: 100%; background: var(--accent); transition: width 0.3s; }
+.funnel { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin-top: 8px; }
+.funnel-step { display: inline-flex; align-items: baseline; gap: 6px; }
+.funnel-arrow { margin: 0 4px; }
+.search-box { position: relative; max-width: 560px; }
+.search-box input { width: 100%; }
+.search-results { position: absolute; z-index: 5; left: 0; right: 0; margin: 4px 0 0; padding: 4px 0; list-style: none;
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08); }
+.search-results li { padding: 6px 12px; cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
+.search-results li:hover { background: var(--bg); }
+.rule-group h4 { margin: 14px 0 4px; font-size: 13px; }
+.rule-table td { vertical-align: top; padding: 6px 8px; }
+.rule-table details summary { cursor: pointer; }
+.rule-table details { margin-top: 2px; max-width: 760px; }
+table.screener-table .badge { margin-right: 4px; }
